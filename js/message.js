@@ -171,7 +171,7 @@ goog.define('jspb.Message.GENERATE_TO_OBJECT', true);
  *     activate the feature.
  *     By default this is enabled for test code only.
  */
-goog.define('jspb.Message.GENERATE_FROM_OBJECT', !goog.DISALLOW_TEST_ONLY_CODE);
+goog.define('jspb.Message.GENERATE_FROM_OBJECT', true);
 
 
 /**

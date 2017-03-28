@@ -25,3 +25,4 @@ exports.exportSymbol = goog.exportSymbol;
 exports.inherits = goog.inherits;
 exports.object = {extend: goog.object.extend};
 exports.typeOf = goog.typeOf;
+exports.isDef = goog.isDef;

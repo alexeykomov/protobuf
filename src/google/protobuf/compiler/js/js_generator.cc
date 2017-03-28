@@ -2212,7 +2212,7 @@ void Generator::GenerateClassFieldToObject(const GeneratorOptions& options,
       // Proto3 puts all defaults (including implicit defaults) in toObject().
       // But for proto2 we leave the existing semantics unchanged: unset fields
       // without default are unset.
-      use_default = false;
+      use_default = true;
     }
 
     // We don't implement this by calling the accessors, because the semantics

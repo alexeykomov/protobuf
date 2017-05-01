@@ -350,6 +350,7 @@ build_ruby_all() {
 build_javascript() {
   internal_build_cpp
   cd js && npm install && npm test && cd ..
+  cd conformance && make test_nodejs && cd ..
 }
 
 generate_php_test_proto() {
@@ -358,9 +359,10 @@ generate_php_test_proto() {
   # Generate test file
   rm -rf generated
   mkdir generated
-  ../../src/protoc --php_out=generated proto/test.proto proto/test_include.proto proto/test_no_namespace.proto
+  ../../src/protoc --php_out=generated proto/test.proto proto/test_include.proto proto/test_no_namespace.proto proto/test_prefix.proto
   pushd ../../src
   ./protoc --php_out=../php/tests/generated google/protobuf/empty.proto
+  ./protoc --php_out=../php/tests/generated -I../php/tests -I. ../php/tests/proto/test_import_descriptor_proto.proto
   popd
   popd
 }
@@ -370,12 +372,9 @@ use_php() {
   PHP=`which php`
   PHP_CONFIG=`which php-config`
   PHPIZE=`which phpize`
-  rm $PHP
-  rm $PHP_CONFIG
-  rm $PHPIZE
-  cp "/usr/bin/php$VERSION" $PHP
-  cp "/usr/bin/php-config$VERSION" $PHP_CONFIG
-  cp "/usr/bin/phpize$VERSION" $PHPIZE
+  ln -sfn "/usr/local/php-${VERSION}/bin/php" $PHP
+  ln -sfn "/usr/local/php-${VERSION}/bin/php-config" $PHP_CONFIG
+  ln -sfn "/usr/local/php-${VERSION}/bin/phpize" $PHPIZE
   generate_php_test_proto
 }
 
@@ -403,10 +402,12 @@ use_php_bc() {
 
 build_php5.5() {
   use_php 5.5
+
   pushd php
   rm -rf vendor
   cp -r /usr/local/vendor-5.5 vendor
-  ./vendor/bin/phpunit
+  wget https://phar.phpunit.de/phpunit-4.8.0.phar -O /usr/bin/phpunit
+  phpunit
   popd
   pushd conformance
   # TODO(teboring): Add it back
@@ -416,42 +417,20 @@ build_php5.5() {
 
 build_php5.5_c() {
   use_php 5.5
+  wget https://phar.phpunit.de/phpunit-4.8.0.phar -O /usr/bin/phpunit
   cd php/tests && /bin/bash ./test.sh && cd ../..
   pushd conformance
-  make test_php_c
+  # make test_php_c
   popd
 }
 
 build_php5.5_zts_c() {
   use_php_zts 5.5
-  wget https://phar.phpunit.de/phpunit-old.phar -O /usr/bin/phpunit
+  wget https://phar.phpunit.de/phpunit-4.8.0.phar -O /usr/bin/phpunit
   cd php/tests && /bin/bash ./test.sh && cd ../..
   pushd conformance
-  make test_php_c
-  popd
-}
-
-build_php5.5_32() {
-  use_php_bc 5.5
-  pushd php
-  rm -rf vendor
-  cp -r /usr/local/vendor-5.5 vendor
-  ./vendor/bin/phpunit
-  popd
-  # TODO(teboring): Add conformance test.
-  # pushd conformance
-  # make test_php
-  # popd
-}
-
-build_php5.5_c_32() {
-  use_php_bc 5.5
-  wget https://phar.phpunit.de/phpunit-old.phar -O /usr/bin/phpunit
-  cd php/tests && /bin/bash ./test.sh && cd ../..
-  # TODO(teboring): Add conformance test.
-  # pushd conformance
   # make test_php_c
-  # popd
+  popd
 }
 
 build_php5.6() {
@@ -459,7 +438,8 @@ build_php5.6() {
   pushd php
   rm -rf vendor
   cp -r /usr/local/vendor-5.6 vendor
-  ./vendor/bin/phpunit
+  wget https://phar.phpunit.de/phpunit-5.7.0.phar -O /usr/bin/phpunit
+  phpunit
   popd
   pushd conformance
   # TODO(teboring): Add it back
@@ -469,9 +449,19 @@ build_php5.6() {
 
 build_php5.6_c() {
   use_php 5.6
+  wget https://phar.phpunit.de/phpunit-5.7.0.phar -O /usr/bin/phpunit
   cd php/tests && /bin/bash ./test.sh && cd ../..
   pushd conformance
-  make test_php_c
+  # make test_php_c
+  popd
+}
+
+build_php5.6_zts_c() {
+  use_php_zts 5.6
+  wget https://phar.phpunit.de/phpunit-5.7.0.phar -O /usr/bin/phpunit
+  cd php/tests && /bin/bash ./test.sh && cd ../..
+  pushd conformance
+  # make test_php_c
   popd
 }
 
@@ -495,7 +485,7 @@ build_php5.6_mac() {
   # Test
   cd php/tests && /bin/bash ./test.sh && cd ../..
   pushd conformance
-  make test_php_c
+  # make test_php_c
   popd
 }
 
@@ -504,7 +494,8 @@ build_php7.0() {
   pushd php
   rm -rf vendor
   cp -r /usr/local/vendor-7.0 vendor
-  ./vendor/bin/phpunit
+  wget https://phar.phpunit.de/phpunit-5.6.0.phar -O /usr/bin/phpunit
+  phpunit
   popd
   pushd conformance
   # TODO(teboring): Add it back
@@ -514,9 +505,43 @@ build_php7.0() {
 
 build_php7.0_c() {
   use_php 7.0
+  wget https://phar.phpunit.de/phpunit-5.6.0.phar -O /usr/bin/phpunit
   cd php/tests && /bin/bash ./test.sh && cd ../..
   pushd conformance
-  make test_php_c
+  # make test_php_c
+  popd
+}
+
+build_php7.0_zts_c() {
+  use_php_zts 7.0
+  wget https://phar.phpunit.de/phpunit-5.6.0.phar -O /usr/bin/phpunit
+  cd php/tests && /bin/bash ./test.sh && cd ../..
+  pushd conformance
+  # make test_php_c
+  popd
+}
+
+build_php7.0_mac() {
+  generate_php_test_proto
+  # Install PHP
+  curl -s https://php-osx.liip.ch/install.sh | bash -s 7.0
+  PHP_FOLDER=`find /usr/local -type d -name "php7-7.0*"`  # The folder name may change upon time
+  export PATH="$PHP_FOLDER/bin:$PATH"
+
+  # Install phpunit
+  curl https://phar.phpunit.de/phpunit-5.6.0.phar -L -o phpunit.phar
+  chmod +x phpunit.phar
+  sudo mv phpunit.phar /usr/local/bin/phpunit
+
+  # Install valgrind
+  echo "#! /bin/bash" > valgrind
+  chmod ug+x valgrind
+  sudo mv valgrind /usr/local/bin/valgrind
+
+  # Test
+  cd php/tests && /bin/bash ./test.sh && cd ../..
+  pushd conformance
+  # make test_php_c
   popd
 }
 
@@ -526,13 +551,10 @@ build_php_all() {
   build_php7.0
   build_php5.5_c
   build_php5.6_c
-  # build_php7.0_c
+  build_php7.0_c
   build_php5.5_zts_c
-}
-
-build_php_all_32() {
-  build_php5.5_32
-  build_php5.5_c_32
+  build_php5.6_zts_c
+  build_php7.0_zts_c
 }
 
 # Note: travis currently does not support testing more than one language so the

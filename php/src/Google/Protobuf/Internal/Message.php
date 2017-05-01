@@ -224,48 +224,57 @@ class Message
         switch ($field->getType()) {
             case GPBType::DOUBLE:
                 if (!GPBWire::readDouble($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside double field.");
                 }
                 break;
             case GPBType::FLOAT:
                 if (!GPBWire::readFloat($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside float field.");
                 }
                 break;
             case GPBType::INT64:
                 if (!GPBWire::readInt64($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside int64 field.");
                 }
                 break;
             case GPBType::UINT64:
                 if (!GPBWire::readUint64($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside uint64 field.");
                 }
                 break;
             case GPBType::INT32:
                 if (!GPBWire::readInt32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside int32 field.");
                 }
                 break;
             case GPBType::FIXED64:
                 if (!GPBWire::readFixed64($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside fixed64 field.");
                 }
                 break;
             case GPBType::FIXED32:
                 if (!GPBWire::readFixed32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside fixed32 field.");
                 }
                 break;
             case GPBType::BOOL:
                 if (!GPBWire::readBool($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside bool field.");
                 }
                 break;
             case GPBType::STRING:
                 // TODO(teboring): Add utf-8 check.
                 if (!GPBWire::readString($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside string field.");
                 }
                 break;
             case GPBType::GROUP:
@@ -280,43 +289,51 @@ class Message
                     $value = new $klass;
                 }
                 if (!GPBWire::readMessage($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside message.");
                 }
                 break;
             case GPBType::BYTES:
                 if (!GPBWire::readString($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside bytes field.");
                 }
                 break;
             case GPBType::UINT32:
                 if (!GPBWire::readUint32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside uint32 field.");
                 }
                 break;
             case GPBType::ENUM:
                 // TODO(teboring): Check unknown enum value.
                 if (!GPBWire::readInt32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside enum field.");
                 }
                 break;
             case GPBType::SFIXED32:
                 if (!GPBWire::readSfixed32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside sfixed32 field.");
                 }
                 break;
             case GPBType::SFIXED64:
                 if (!GPBWire::readSfixed64($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside sfixed64 field.");
                 }
                 break;
             case GPBType::SINT32:
                 if (!GPBWire::readSint32($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside sint32 field.");
                 }
                 break;
             case GPBType::SINT64:
                 if (!GPBWire::readSint64($input, $value)) {
-                    return false;
+                    throw new GPBDecodeException(
+                        "Unexpected EOF inside sint64 field.");
                 }
                 break;
             default:
@@ -345,24 +362,21 @@ class Message
         }
 
         if ($value_format === GPBWire::NORMAL_FORMAT) {
-            if (!self::parseFieldFromStreamNoTag($input, $field, $value)) {
-                return false;
-            }
+            self::parseFieldFromStreamNoTag($input, $field, $value);
         } elseif ($value_format === GPBWire::PACKED_FORMAT) {
             $length = 0;
             if (!GPBWire::readInt32($input, $length)) {
-                return false;
+                throw new GPBDecodeException(
+                    "Unexpected EOF inside packed length.");
             }
             $limit = $input->pushLimit($length);
             $getter = $field->getGetter();
             while ($input->bytesUntilLimit() > 0) {
-                if (!self::parseFieldFromStreamNoTag($input, $field, $value)) {
-                    return false;
-                }
+                self::parseFieldFromStreamNoTag($input, $field, $value);
                 $this->$getter()[] = $value;
             }
             $input->popLimit($limit);
-            return true;
+            return;
         } else {
             return false;
         }
@@ -377,8 +391,6 @@ class Message
             $setter = $field->getSetter();
             $this->$setter($value);
         }
-
-        return true;
     }
 
     /**
@@ -491,15 +503,86 @@ class Message
     }
 
     /**
+     * Merges the contents of the specified message into current message.
+     *
+     * This method merges the contents of the specified message into the
+     * current message. Singular fields that are set in the specified message
+     * overwrite the corresponding fields in the current message.  Repeated
+     * fields are appended. Map fields key-value pairs are overritten.
+     * Singular/Oneof sub-messages are recursively merged. All overritten
+     * sub-messages are deep-copied.
+     *
+     * @param object $msg Protobuf message to be merged from.
+     * @return null.
+     */
+    public function mergeFrom($msg)
+    {
+      if (get_class($this) !== get_class($msg)) {
+          user_error("Cannot merge messages with different class.");
+          return;
+      }
+
+      foreach ($this->desc->getField() as $field) {
+          $setter = $field->getSetter();
+          $getter = $field->getGetter();
+          if ($field->isMap()) {
+              if (count($msg->$getter()) != 0) {
+                  $value_field = $field->getMessageType()->getFieldByNumber(2);
+                  foreach ($msg->$getter() as $key => $value) {
+                      if ($value_field->getType() == GPBType::MESSAGE) {
+                          $klass = $value_field->getMessageType()->getClass();
+                          $copy = new $klass;
+                          $copy->mergeFrom($value);
+                          $this->$getter()[$key] = $copy;
+                      } else {
+                          $this->$getter()[$key] = $value;
+                      }
+                  }
+              }
+          } else if ($field->getLabel() === GPBLabel::REPEATED) {
+              if (count($msg->$getter()) != 0) {
+                  foreach ($msg->$getter() as $tmp) {
+                      if ($field->getType() == GPBType::MESSAGE) {
+                          $klass = $field->getMessageType()->getClass();
+                          $copy = new $klass;
+                          $copy->mergeFrom($tmp);
+                          $this->$getter()[] = $copy;
+                      } else {
+                          $this->$getter()[] = $tmp;
+                      }
+                  }
+              }
+          } else if ($field->getLabel() === GPBLabel::OPTIONAL) {
+              if($msg->$getter() !== $this->defaultValue($field)) {
+                  $tmp = $msg->$getter();
+                  if ($field->getType() == GPBType::MESSAGE) {
+                      if (is_null($this->$getter())) {
+                          $klass = $field->getMessageType()->getClass();
+                          $new_msg = new $klass;
+                          $this->$setter($new_msg);
+                      }
+                      $this->$getter()->mergeFrom($tmp);
+                  } else {
+                      $this->$setter($tmp);
+                  }
+              }
+          }
+      }
+    }
+
+    /**
      * Parses a protocol buffer contained in a string.
      *
      * This function takes a string in the (non-human-readable) binary wire
-     * format, matching the encoding output by encode().
+     * format, matching the encoding output by serializeToString().
+     * See mergeFrom() for merging behavior, if the field is already set in the
+     * specified message.
      *
      * @param string $data Binary protobuf data.
-     * @return bool Return true on success.
+     * @return null.
+     * @throws Exception Invalid data.
      */
-    public function decode($data)
+    public function mergeFromString($data)
     {
         $input = new InputStream($data);
         $this->parseFromStream($input);
@@ -525,9 +608,7 @@ class Message
               continue;
             }
 
-            if (!$this->parseFieldFromStream($tag, $input, $field)) {
-                return false;
-            }
+            $this->parseFieldFromStream($tag, $input, $field);
         }
     }
 
@@ -646,7 +727,7 @@ class Message
      * Serialize the message to string.
      * @return string Serialized binary protobuf data.
      */
-    public function encode()
+    public function serializeToString()
     {
         $output = new OutputStream($this->byteSize());
         $this->serializeToStream($output);
@@ -702,9 +783,11 @@ class Message
             case GPBType::SFIXED64:
                 $size += 8;
                 break;
-            case GPBType::UINT32:
             case GPBType::INT32:
             case GPBType::ENUM:
+                $size += GPBWire::varint32Size($value, true);
+                break;
+            case GPBType::UINT32:
                 $size += GPBWire::varint32Size($value);
                 break;
             case GPBType::UINT64:
